@@ -1,0 +1,7 @@
+aiogram==3.17.0
+aiohttp==3.11.11
+asyncio==3.4.3
+python-dotenv==1.0.1
+requests==2.32.3
+schedule==1.2.2
+aiocron==1.8
