@@ -7,6 +7,11 @@ from aiogram.client.default import DefaultBotProperties
 from config_reader import config
 from handlers import router
 
+from logger import logger
+
+logger.info("Проверка логов: INFO уровень")
+logger.error("Проверка логов: ERROR уровень")
+
 
 logging.basicConfig(level=logging.INFO)
 

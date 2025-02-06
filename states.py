@@ -15,8 +15,6 @@ class LogFood(StatesGroup):
     food_name = State() 
     food_weight = State()
 
-
-
 class LogWater(StatesGroup):
     water_amount = State() 
 

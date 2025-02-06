@@ -1,32 +1,40 @@
-from aiogram import Router, F
+import logging
+from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command
 from states import UserProfile
 from client import fetch_weather
 from utils.utils import calculate_water_goal, calculate_calorie_goal
-from aiogram.filters import Command
 
+logging.basicConfig(level=logging.INFO)
 
 router = Router()
-users = {} 
+users = {}
+
+def get_user_profile(user_id):
+    """Создаёт профиль пользователя, если его нет."""
+    if user_id not in users:
+        users[user_id] = {}
+    return users[user_id]
 
 @router.message(Command("set_profile"))
 async def set_profile(message: Message, state: FSMContext):
     user_id = message.from_user.id
+    user_data = get_user_profile(user_id)
 
-    if user_id in users:
+    if user_data:
         await message.answer("У вас уже есть профиль. Хотите обновить? (да/нет)")
         await state.set_state(UserProfile.name)
         return
 
-    users[user_id] = {} 
     await message.answer("Введите ваше имя:")
     await state.set_state(UserProfile.name)
 
 @router.message(UserProfile.name)
 async def process_name(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    users[user_id]["name"] = message.text
+    get_user_profile(user_id)["name"] = message.text
 
     await message.answer("Введите ваш пол (м/ж):")
     await state.set_state(UserProfile.gender)
@@ -40,7 +48,7 @@ async def process_gender(message: Message, state: FSMContext):
         await message.answer("⚠ Введите 'м' (мужской) или 'ж' (женский).")
         return
 
-    users[user_id]["gender"] = gender
+    get_user_profile(user_id)["gender"] = gender
     await message.answer("Введите ваш вес (в кг):")
     await state.set_state(UserProfile.weight)
 
@@ -49,12 +57,12 @@ async def process_weight(message: Message, state: FSMContext):
     user_id = message.from_user.id
 
     try:
-        weight = int(message.text)
-        users[user_id]["weight"] = weight
+        weight = float(message.text.replace(",", "."))
+        get_user_profile(user_id)["weight"] = weight
         await message.answer("Введите ваш рост (в см):")
         await state.set_state(UserProfile.height)
     except ValueError:
-        await message.answer("⚠ Введите вес числом.")
+        await message.answer("⚠ Введите вес числом (например, 72.5).")
 
 @router.message(UserProfile.height)
 async def process_height(message: Message, state: FSMContext):
@@ -62,7 +70,7 @@ async def process_height(message: Message, state: FSMContext):
 
     try:
         height = int(message.text)
-        users[user_id]["height"] = height
+        get_user_profile(user_id)["height"] = height
         await message.answer("Введите ваш возраст:")
         await state.set_state(UserProfile.age)
     except ValueError:
@@ -74,7 +82,7 @@ async def process_age(message: Message, state: FSMContext):
 
     try:
         age = int(message.text)
-        users[user_id]["age"] = age
+        get_user_profile(user_id)["age"] = age
         await message.answer("Сколько минут активности у вас в день?")
         await state.set_state(UserProfile.activity)
     except ValueError:
@@ -86,7 +94,7 @@ async def process_activity(message: Message, state: FSMContext):
 
     try:
         activity = int(message.text)
-        users[user_id]["activity"] = activity
+        get_user_profile(user_id)["activity"] = activity
         await message.answer("В каком городе вы находитесь?")
         await state.set_state(UserProfile.city)
     except ValueError:
@@ -97,33 +105,32 @@ async def process_city(message: Message, state: FSMContext):
     user_id = message.from_user.id
     city = message.text.strip()
 
-    temperature = fetch_weather(city) 
+    temperature = await fetch_weather(city)
     
-    print(f"🔍 DEBUG: Температура в {city} = {temperature}")
-
     if temperature is None:
         await message.answer("⚠ Ошибка: не удалось получить температуру. Попробуйте другой город.")
         return
 
-    users[user_id]["city"] = city
-    users[user_id]["temperature"] = temperature  # 
-    users[user_id]["water_goal"] = calculate_water_goal(users[user_id]["weight"], users[user_id]["activity"], temperature)
-    users[user_id]["calorie_goal"] = calculate_calorie_goal(users[user_id]["weight"], users[user_id]["height"], users[user_id]["age"], users[user_id]["activity"])
+    user_data = get_user_profile(user_id)
+    user_data["city"] = city
+    user_data["temperature"] = temperature
+    user_data["water_goal"] = calculate_water_goal(user_data["weight"], user_data["activity"], temperature)
+    user_data["calorie_goal"] = calculate_calorie_goal(user_data["weight"], user_data["height"], user_data["age"], user_data["activity"])
 
     await state.clear()
     await message.answer(
         f"✅ *Профиль сохранён!*\n\n"
-        f"👤 *Имя:* {users[user_id]['name']}\n"
-        f"⚤ *Пол:* {users[user_id]['gender']}\n"
-        f"⚖️ *Вес:* {users[user_id]['weight']} кг\n"
-        f"📏 *Рост:* {users[user_id]['height']} см\n"
-        f"🎂 *Возраст:* {users[user_id]['age']} лет\n"
+        f"👤 *Имя:* {user_data['name']}\n"
+        f"⚤ *Пол:* {user_data['gender']}\n"
+        f"⚖️ *Вес:* {user_data['weight']} кг\n"
+        f"📏 *Рост:* {user_data['height']} см\n"
+        f"🎂 *Возраст:* {user_data['age']} лет\n"
         f"🏙 *Город:* {city}\n"
         f"🌡 *Температура:* {temperature}°C\n" 
-        f"💧 *Ваша дневная норма воды:* {users[user_id]['water_goal']} мл\n"
-        f"🔥 *Калории:* {users[user_id]['calorie_goal']} ккал"
+        f"💧 *Ваша дневная норма воды:* {user_data['water_goal']} мл\n"
+        f"🔥 *Калории:* {user_data['calorie_goal']} ккал",
+        parse_mode="Markdown"
     )
-
 
 def register_profile_handlers(router: Router):
     router.message.register(set_profile, Command("set_profile"))
